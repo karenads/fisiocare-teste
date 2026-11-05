@@ -3,35 +3,24 @@ package com.example.gerenciadorfisio.application.services;
 import com.auth0.jwt.JWT;
 import com.auth0.jwt.JWTVerifier;
 import com.auth0.jwt.algorithms.Algorithm;
-import com.auth0.jwt.exceptions.JWTVerificationException;
 import com.auth0.jwt.interfaces.DecodedJWT;
+import com.example.gerenciadorfisio.application.DTOs.UsuarioLogado;
+import com.example.gerenciadorfisio.domain.entities.Token;
+import com.example.gerenciadorfisio.domain.entities.Usuario;
+import com.example.gerenciadorfisio.domain.repository.TokenRepository;
+import com.example.gerenciadorfisio.domain.repository.UsuarioRepository;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.time.LocalDateTime;
-import java.time.ZoneOffset;
+import java.time.ZoneId;
 
-/*
-  Service responsável por gerar e validar tokens JWT.
-
-  O token é utilizado depois do login para identificar
-  o usuário nas próximas requisições, sem precisar enviar
-  e-mail e senha novamente.
-
-  @Service indica que esta classe é uma camada de serviço
-  gerenciada pelo Spring.
-*/
 @Service
 public class TokenService {
 
-    /*
-      Valores carregados das configurações da aplicação.
-
-      secret = chave secreta usada na assinatura do token.
-      expiracao = tempo de validade do token.
-      emissor = identifica quem gerou o token.
-    */
     @Value("${spring.secret}")
     private String secret;
 
@@ -41,99 +30,71 @@ public class TokenService {
     @Value("${spring.emissor}")
     private String emissor;
 
+    @Autowired
+    private TokenRepository tokenRepository;
 
-    /*
-      GERAÇÃO DO TOKEN
+    @Autowired
+    private UsuarioRepository usuarioRepository;
 
-      Este método recebe o subject, que identifica
-      o usuário relacionado ao token.
+    @Transactional
+    public String gerarToken(String email) {
 
-      No nosso fluxo, o subject é o e-mail
-      informado durante o login.
-    */
-    public String gerarToken(String subject) {
+        Usuario usuario = usuarioRepository.findByEmail(email).orElseThrow(
+                () -> new IllegalArgumentException("Usuário não encontrado!")
+        );
 
-        try {
-
-            /*
-              A primeira etapa da geração do token é criar
-              o algoritmo HMAC256 utilizando a chave secreta.
-
-              Esse algoritmo será utilizado no final
-              para assinar o JWT e garantir sua integridade.
-            */
-            Algorithm algorithm = Algorithm.HMAC256(secret);
-
-
-            /*
-              Depois o token é montado com:
-
-              - emissor: identifica quem criou o token;
-              - subject: identifica o usuário;
-              - expiração: define até quando o token será válido;
-              - assinatura: utiliza o algoritmo criado acima.
-            */
-            String token = JWT.create()
-                    .withIssuer(emissor)
-                    .withSubject(subject)
-                    .withExpiresAt(getDataExpiracao())
-                    .sign(algorithm);
-
-            return token;
-
-        } catch (RuntimeException e) {
-
-            throw new RuntimeException(e);
+        if (usuario.getStatus() != com.example.gerenciadorfisio.application.DTOs.EnumStatusUsuario.ATIVO) {
+            throw new IllegalArgumentException("Usuário bloqueado ou excluído!");
         }
-    }
 
-
-    /*
-      VALIDAÇÃO DO TOKEN
-
-      Para validar, é utilizado novamente o algoritmo
-      HMAC256 com a mesma chave secreta.
-
-      O verificador confere se o token possui
-      assinatura válida, emissor correto e se ainda
-      está dentro do período de validade.
-
-      Caso exista algum problema, é lançada
-      JWTVerificationException.
-    */
-    public DecodedJWT verificarToken(String token)
-            throws JWTVerificationException {
-
+        Instant dataExpiracao = Instant.now().plusSeconds(expiracao * 60);
         Algorithm algorithm = Algorithm.HMAC256(secret);
 
+        String token = JWT.create()
+                .withIssuer(emissor)
+                .withSubject(email)
+                .withJWTId(java.util.UUID.randomUUID().toString())
+                .withExpiresAt(dataExpiracao)
+                .sign(algorithm);
+
+        LocalDateTime dataLocal = LocalDateTime.ofInstant(dataExpiracao, ZoneId.systemDefault());
+        tokenRepository.save(new Token(token, usuario, dataLocal));
+        return token;
+    }
+
+    @Transactional(readOnly = true)
+    public UsuarioLogado verificarToken(String token) {
+
+        Algorithm algorithm = Algorithm.HMAC256(secret);
         JWTVerifier verificador = JWT.require(algorithm)
                 .withIssuer(emissor)
                 .build();
 
-        return verificador.verify(token);
+        DecodedJWT jwt = verificador.verify(token);
+
+        Token tokenBanco = tokenRepository.findTokenByToken(token).orElseThrow(
+                () -> new IllegalArgumentException("Token não encontrado!")
+        );
+
+        if (tokenBanco.isRevogado() || tokenBanco.getExpiracao().isBefore(LocalDateTime.now())) {
+            throw new IllegalArgumentException("Token expirado ou revogado!");
+        }
+
+        Usuario usuario = tokenBanco.getUsuario();
+        if (!usuario.getEmail().equals(jwt.getSubject())
+                || usuario.getStatus() != com.example.gerenciadorfisio.application.DTOs.EnumStatusUsuario.ATIVO) {
+            throw new IllegalArgumentException("Usuário não autorizado!");
+        }
+
+        return new UsuarioLogado(usuario);
     }
 
-
-    /*
-      DATA DE EXPIRAÇÃO
-
-      Primeiro pega a data e hora atual.
-
-      Depois adiciona a quantidade de minutos
-      definida na configuração de expiração.
-
-      Por fim, converte a data para Instant,
-      formato utilizado pelo JWT.
-    */
-    private Instant getDataExpiracao() {
-
-        // Pega a data e hora atual.
-        var dataAtual = LocalDateTime.now();
-
-        // Adiciona o tempo de validade do token.
-        var dataFutura = dataAtual.plusMinutes(expiracao);
-
-        // Converte para Instant utilizando o offset -03:00.
-        return dataFutura.toInstant(ZoneOffset.of("-03:00"));
+    @Transactional
+    public void revogarToken(String token) {
+        Token tokenBanco = tokenRepository.findTokenByToken(token).orElse(null);
+        if (tokenBanco != null) {
+            tokenBanco.setRevogado(true);
+            tokenRepository.save(tokenBanco);
+        }
     }
 }

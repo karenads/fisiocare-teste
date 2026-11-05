@@ -15,5 +15,7 @@
       <TextField fx:id="txtCpf" layoutX="123.0" layoutY="93.0" />
       <TextField fx:id="txtEmail" layoutX="123.0" layoutY="133.0" />
       <PasswordField fx:id="txtSenha" layoutX="123.0" layoutY="167.0" />
+      <Label layoutX="78.0" layoutY="212.0" text="Chave do admin" />
+      <PasswordField fx:id="txtSecretKey" layoutX="172.0" layoutY="208.0" />
    </children>
 </AnchorPane>

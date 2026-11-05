@@ -99,6 +99,9 @@ public class PacienteController {
         HttpURLConnection connection = (HttpURLConnection) urlAPI.openConnection();
         connection.setRequestMethod(protocoloHttp);
         connection.setDoOutput(true);
+        if (!DesktopSession.token.isBlank()) {
+            connection.setRequestProperty("Authorization", "Bearer " + DesktopSession.token);
+        }
 
         if (!json.isEmpty()) {
             connection.setRequestProperty("Content-Type", "application/json");

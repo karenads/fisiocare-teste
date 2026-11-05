@@ -9,11 +9,14 @@ import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import java.util.List;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 
 @Entity
-@Data // Gera getters, setters, toString, equals e hashCode
-@NoArgsConstructor // Gera um construtor vazio
-@AllArgsConstructor // Gera um construtor com todos os atributos
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
 public class Usuario {
 
     @Id
@@ -29,31 +32,31 @@ public class Usuario {
 
     private String senha;
 
+    private String role = "ROLE_RECEPCAO";
+
+    private EnumStatusUsuario status = EnumStatusUsuario.ATIVO;
+
     public void setEmail(String email) {
         this.email = new Email(email).toString();
     }
 
-    private String role = "ROLE_USER";
-
-
-    private EnumStatusUsuario status = EnumStatusUsuario.ATIVO;
-
-    public Usuario(CriarAdminRequest criarAdminRequest) {
-
-        this.setCpf(new CPF(criarAdminRequest.cpf()));
-        this.setNome(criarAdminRequest.nome());
-        this.setSenha(criarAdminRequest.senha());
-        this.setEmail(criarAdminRequest.email());
-        this.setRole("ROLE_ADMIN");
-
+    public List<? extends GrantedAuthority> getAuthorities() {
+        return List.of(new SimpleGrantedAuthority(role));
     }
 
-    public Usuario(UsuarioRequest usuario) {
+    public Usuario(CriarAdminRequest request) {
+        this.setCpf(new CPF(request.cpf()));
+        this.setNome(request.nome());
+        this.setSenha(request.senha());
+        this.setEmail(request.email());
+        this.setRole("ROLE_ADMIN");
+    }
 
-        this.setCpf(new CPF(usuario.cpf()));
-        this.setNome(usuario.nome());
-        this.setSenha(usuario.senha());
-        this.setEmail(usuario.email());
-        this.setRole("ROLE_USER");
+    public Usuario(UsuarioRequest request) {
+        this.setCpf(new CPF(request.cpf()));
+        this.setNome(request.nome());
+        this.setSenha(request.senha());
+        this.setEmail(request.email());
+        this.setRole("ROLE_RECEPCAO");
     }
 }

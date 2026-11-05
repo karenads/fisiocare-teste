@@ -3,14 +3,15 @@ package com.example.gerenciadorfisio.domain.entities;
 import com.example.gerenciadorfisio.domain.valueobject.CPF;
 import com.example.gerenciadorfisio.domain.valueobject.Email;
 import com.example.gerenciadorfisio.domain.valueobject.Telefone;
-import jakarta.persistence.Entity;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.Id;
+import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-
 import java.time.LocalDate;
+import java.util.Set;
+import java.util.HashSet;
+import lombok.ToString;
+import lombok.EqualsAndHashCode;
 
 @Entity
 @Data
@@ -21,24 +22,26 @@ public class Paciente {
     @Id
     @GeneratedValue
     private Long id;
-
     private String nome;
-
     private String cpf;
-
     private String telefone;
-
     private String email;
-
     private LocalDate dataNascimento;
-
     private String endereco;
-
     private String observacoes;
-
     private EnumStatusPaciente status = EnumStatusPaciente.ATIVO;
 
-    // Validação dos dados do paciente pelos Value Objects.
+    // O usuário responsável vem do token, nunca do formulário.
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "responsavel_id")
+    private Usuario responsavel;
+
+    // Um paciente pode ter vários tratamentos de fisioterapia.
+    @OneToMany(mappedBy = "paciente")
+    @ToString.Exclude
+    @EqualsAndHashCode.Exclude
+    private Set<Tratamento> tratamentos = new HashSet<>();
+
     public void setCpf(String cpf) {
         this.cpf = new CPF(cpf).toString();
     }
@@ -57,5 +60,4 @@ public class Paciente {
         }
         this.dataNascimento = dataNascimento;
     }
-
 }

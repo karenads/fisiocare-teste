@@ -1,16 +1,19 @@
 package com.example.gerenciadorfisio.application.services;
 
+import com.example.gerenciadorfisio.application.ports.UsuarioPorta;
+
 import com.example.gerenciadorfisio.application.DTOs.*;
 import com.example.gerenciadorfisio.domain.entities.Usuario;
 import com.example.gerenciadorfisio.domain.repository.UsuarioRepository;
+import com.example.gerenciadorfisio.domain.valueobject.CPF;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
-
 import java.util.List;
 
 @Service
-public class UsuarioService {
+public class UsuarioService implements UsuarioPorta {
 
     @Autowired
     private UsuarioRepository usuarioRepository;
@@ -21,74 +24,89 @@ public class UsuarioService {
     @Value("${spring.secret}")
     private String secret;
 
-
-    public LoginResponse validarUsuarioAutenticadoRetornaToken(LoginRequest resquest) {
-
-        if (usuarioRepository.existsUsuarioByEmailAndSenha(resquest.email(), resquest.senha())) {
-
-            var token = tokenService.gerarToken(resquest.email());
-            return new LoginResponse(token);
+    public LoginResponse validarUsuarioAutenticadoRetornaToken(LoginRequest request) {
+        if (usuarioRepository.existsUsuarioByEmailAndSenha(request.email(), request.senha())) {
+            var usuario = usuarioRepository.findByEmail(request.email()).orElse(null);
+            if (usuario != null && usuario.getStatus() == EnumStatusUsuario.ATIVO) {
+                return new LoginResponse(tokenService.gerarToken(request.email()));
+            }
         }
         return null;
     }
 
-
-    public List<UsuarioResponse> listarTodosUsuariosTable(){
-
-        return  usuarioRepository.findAll()
-                .stream()
-                .map(UsuarioResponse::new)
-                .toList();
+    public UsuarioLogado getUsuarioLogado() {
+        return (UsuarioLogado) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
     }
 
-    public CriarAdminResponse criarAdmin(CriarAdminRequest criarAdminRequest) {
+    public Usuario getUsuarioEntidadeLogado() {
+        return usuarioRepository.findById(getUsuarioLogado().id()).orElseThrow(
+                () -> new IllegalArgumentException("Usuário logado não encontrado!")
+        );
+    }
 
-        if(!criarAdminRequest.secretKey().equals(secret)){
-            return new CriarAdminResponse(0L,"Usuario Salvo com sucesso!");
+    public boolean isAdmin() {
+        return "ROLE_ADMIN".equals(getUsuarioLogado().role());
+    }
 
+    public List<UsuarioResponse> listarTodosUsuariosTable() {
+        return usuarioRepository.findAll().stream().map(UsuarioResponse::new).toList();
+    }
+
+    // O JavaFX cria somente o primeiro administrador. Depois, exige login e permissão.
+    public CriarAdminResponse criarAdmin(CriarAdminRequest request) {
+        if (usuarioRepository.count() != 0) {
+            throw new IllegalArgumentException("O administrador inicial já foi cadastrado!");
         }
-
-        Usuario usuarioAdminSalvar = new Usuario(criarAdminRequest);
-        usuarioRepository.save(usuarioAdminSalvar);
-
-        return new CriarAdminResponse(usuarioAdminSalvar.getId(),"Usuario Salvo com sucesso!");
+        if (request.secretKey() == null || !request.secretKey().equals(secret)) {
+            throw new IllegalArgumentException("Chave de administrador inválida!");
+        }
+        Usuario usuario = usuarioRepository.save(new Usuario(request));
+        return new CriarAdminResponse(usuario.getId(), "Usuário salvo com sucesso!");
     }
 
-    public UsuarioResponse salvarUsuario(UsuarioRequest usuario, Long id) {
-
+    public UsuarioResponse salvarUsuario(UsuarioRequest request, Long id) {
+        Usuario usuario;
         if (id == 0L) {
-            Usuario usuarioBanco = new Usuario(usuario);
-            usuarioRepository.save(usuarioBanco);
-            return new UsuarioResponse(usuarioBanco);
+            usuario = new Usuario(request);
+        } else {
+            usuario = usuarioRepository.findById(id).orElse(null);
+            if (usuario == null) return null;
+            usuario.setNome(request.nome());
+            usuario.setCpf(new CPF(request.cpf()));
+            usuario.setEmail(request.email());
+            if (request.senha() != null && !request.senha().isBlank()) {
+                usuario.setSenha(request.senha());
+            }
         }
-
-        Usuario usuarioBanco = usuarioRepository.findById(id).orElse(null);
-        if (usuarioBanco != null) {
-            usuarioBanco.setNome(usuario.nome());
-            usuarioBanco.setCpf(new com.example.gerenciadorfisio.domain.valueobject.CPF(usuario.cpf()));
-            usuarioBanco.setEmail(usuario.email());
-            usuarioBanco.setSenha(usuario.senha());
-            usuarioRepository.save(usuarioBanco);
-            return new UsuarioResponse(usuarioBanco);
-        }
-        return null;
+        return new UsuarioResponse(usuarioRepository.save(usuario));
     }
 
     public UsuarioResponse buscarPorId(Long id) {
         Usuario usuario = usuarioRepository.findById(id).orElse(null);
-        if (usuario == null) {
-            return null;
-        }
-        return new UsuarioResponse(usuario);
+        return usuario == null ? null : new UsuarioResponse(usuario);
+    }
+
+    public UsuarioResponse buscarUsuarioLogado() {
+        return new UsuarioResponse(getUsuarioEntidadeLogado());
     }
 
     public boolean atualizarStatus(EnumStatusUsuario status, Long id) {
-        Usuario usuarioBanco = usuarioRepository.findById(id).orElse(null);
-        if (usuarioBanco == null) {
-            return false;
+        Usuario usuario = usuarioRepository.findById(id).orElse(null);
+        if (usuario == null) return false;
+        usuario.setStatus(status);
+        usuarioRepository.save(usuario);
+        return true;
+    }
+
+    public boolean atualizarRole(Long id, String role) {
+        if (!"ROLE_ADMIN".equals(role) && !"ROLE_FISIOTERAPEUTA".equals(role)
+                && !"ROLE_RECEPCAO".equals(role)) {
+            throw new IllegalArgumentException("Perfil inválido!");
         }
-        usuarioBanco.setStatus(status);
-        usuarioRepository.save(usuarioBanco);
+        Usuario usuario = usuarioRepository.findById(id).orElse(null);
+        if (usuario == null) return false;
+        usuario.setRole(role);
+        usuarioRepository.save(usuario);
         return true;
     }
 }

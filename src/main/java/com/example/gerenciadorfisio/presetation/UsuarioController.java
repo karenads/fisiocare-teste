@@ -1,76 +1,78 @@
 package com.example.gerenciadorfisio.presetation;
 
 import com.example.gerenciadorfisio.application.DTOs.*;
-import com.example.gerenciadorfisio.application.services.UsuarioService;
-import io.swagger.v3.oas.annotations.Operation;
+import com.example.gerenciadorfisio.application.ports.UsuarioPorta;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-
 import java.util.List;
 
 @RestController
 @RequestMapping("/usuarios")
-@Tag(name = "Usuario", description = "Grupo de APIs Responsável por controlar a estrutura de criação e consulta de usuários do sistema!")
+@Tag(name = "Usuario")
 public class UsuarioController {
 
     @Autowired
-    private UsuarioService usuarioService;
+    private UsuarioPorta usuarioService;
 
     @GetMapping
-    @Operation(summary = "Método de consulta de lista de usuários!", description = "Método responsável em efetuar a consulta de todos os usuários sem filtro!")
     public ResponseEntity<List<UsuarioResponse>> listarTodos() {
         return ResponseEntity.ok(usuarioService.listarTodosUsuariosTable());
     }
 
     @PostMapping("/admin")
-    public ResponseEntity<?> criarAdmin(@RequestBody CriarAdminRequest criarAdminRequest) {
+    public ResponseEntity<?> criarAdmin(@RequestBody CriarAdminRequest request) {
         try {
-            return ResponseEntity.ok(usuarioService.criarAdmin(criarAdminRequest));
+            return ResponseEntity.ok(usuarioService.criarAdmin(request));
         } catch (RuntimeException e) {
             return ResponseEntity.badRequest().body(e.getMessage());
         }
     }
 
+    @GetMapping("/buscarusuariologado")
+    public ResponseEntity<UsuarioResponse> buscarUsuarioLogado() {
+        return ResponseEntity.ok(usuarioService.buscarUsuarioLogado());
+    }
+
     @GetMapping("/{id}")
     public ResponseEntity<UsuarioResponse> buscarPorId(@PathVariable Long id) {
-        UsuarioResponse usuarioBanco = usuarioService.buscarPorId(id);
-        if (usuarioBanco != null) {
-            return ResponseEntity.ok(usuarioBanco);
-        }
-        return ResponseEntity.notFound().build();
+        UsuarioResponse usuario = usuarioService.buscarPorId(id);
+        return usuario != null ? ResponseEntity.ok(usuario) : ResponseEntity.notFound().build();
     }
 
     @PostMapping
-    @ResponseStatus(HttpStatus.CREATED)
-    @Operation(summary = "Método de criação de usuários!", description = "Método responsável em efetuar a criação de novos usuários!")
-    public ResponseEntity<?> criar(@RequestBody UsuarioRequest usuario) {
+    public ResponseEntity<?> criar(@RequestBody UsuarioRequest request) {
         try {
-            return ResponseEntity.ok(usuarioService.salvarUsuario(usuario, 0L));
+            return ResponseEntity.ok(usuarioService.salvarUsuario(request, 0L));
+        } catch (RuntimeException e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    @PutMapping("/{id}")
+    public ResponseEntity<?> atualizar(@PathVariable Long id, @RequestBody UsuarioRequest request) {
+        try {
+            UsuarioResponse usuario = usuarioService.salvarUsuario(request, id);
+            return usuario != null ? ResponseEntity.ok(usuario) : ResponseEntity.notFound().build();
         } catch (RuntimeException e) {
             return ResponseEntity.badRequest().body(e.getMessage());
         }
     }
 
     @PatchMapping("/{id}/status")
-    public ResponseEntity<Void> atualizarStatus(@PathVariable Long id, @RequestBody AtualizarStatusRequest statusRequest) {
-        if (usuarioService.atualizarStatus(statusRequest.status(), id)) {
-            return ResponseEntity.ok().build();
-        }
-        return ResponseEntity.notFound().build();
+    public ResponseEntity<Void> atualizarStatus(@PathVariable Long id,
+                                               @RequestBody AtualizarStatusRequest request) {
+        return usuarioService.atualizarStatus(request.status(), id) ?
+                ResponseEntity.ok().build() : ResponseEntity.notFound().build();
     }
 
-    @PutMapping("/{id}")
-    @Operation(summary = "Método de edição de usuarios", description = "Método responsável pela edição de usuarios cadastrados no sistema")
-    public ResponseEntity<?> atualizar(@PathVariable Long id, @RequestBody UsuarioRequest usuario) {
+    @PatchMapping("/{id}/role")
+    public ResponseEntity<?> atualizarRole(@PathVariable Long id,
+                                           @RequestBody AtualizarRoleRequest request) {
         try {
-            UsuarioResponse usuarioBanco = usuarioService.salvarUsuario(usuario, id);
-            if (usuarioBanco != null) {
-                return ResponseEntity.ok(usuarioBanco);
-            }
-            return ResponseEntity.notFound().build();
+            return usuarioService.atualizarRole(id, request.role()) ?
+                    ResponseEntity.ok().build() : ResponseEntity.notFound().build();
         } catch (RuntimeException e) {
             return ResponseEntity.badRequest().body(e.getMessage());
         }
@@ -78,9 +80,7 @@ public class UsuarioController {
 
     @DeleteMapping("/{id}/excluir")
     public ResponseEntity<Void> excluir(@PathVariable Long id) {
-        if (usuarioService.atualizarStatus(EnumStatusUsuario.EXCLUIDO, id)) {
-            return ResponseEntity.ok().build();
-        }
-        return ResponseEntity.notFound().build();
+        return usuarioService.atualizarStatus(EnumStatusUsuario.EXCLUIDO, id) ?
+                ResponseEntity.ok().build() : ResponseEntity.notFound().build();
     }
 }
